@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../../../../../../Dimar's Codes/Arduino/finpro_mbd"
+		},
+		{
+			"name": "dimar",
+			"path": "../dimar"
+		},
+		{
+			"name": "finpro1",
+			"path": "."
+		}
+	],
+	"settings": {}
+}
