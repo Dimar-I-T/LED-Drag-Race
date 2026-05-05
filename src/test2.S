@@ -2,16 +2,18 @@
 #include "avr/io.h"
 #include "avr/interrupt.h"
 
+; Deklarasi Fungsi Global
 .global main
 .global PCINT2_vect 
 .global PCINT0_vect
 
+; Bagian Utama Program (Setup)
 main:
     clr r1
-    clr r4 ; r4 = Score P1
-    clr r5 ; r5 = Score P2
+    clr r4
+    clr r5
 
-    ; 1. Inisialisasi Serial Monitor
+    ; Inisialisasi Serial Monitor (Baudrate 9600)
     clr R24
     sts UBRR0H, R24
     ldi R24, 103
@@ -21,75 +23,76 @@ main:
     ldi R24, (1<<UCSZ01 | 1<<UCSZ00)
     sts UCSR0C, R24
 
-    ; 2. Setup Pin Shift Register
-    sbi DDRD, 2 ; PD2 = DS
-    sbi DDRD, 3 ; PD3 = SHCP
-    sbi DDRD, 4 ; PD4 = STCP
+    ; Setup Pin Shift Register (Output)
+    sbi DDRD, 2
+    sbi DDRD, 3
+    sbi DDRD, 4
 
-    ; 3. Setup Tombol P1 (PD5, PD6)
+    ; Setup Pin Tombol Player 1 (Input Pull-up)
     cbi DDRD, 5 
     sbi PORTD, 5 
     cbi DDRD, 6 
     sbi PORTD, 6 
 
-    ; 4. Setup Tombol P2 (PB0/Pin8, PB1/Pin9)
+    ; Setup Pin Tombol Player 2 (Input Pull-up)
     cbi DDRB, 0 
     sbi PORTB, 0
     cbi DDRB, 1 
     sbi PORTB, 1
 
-    ; 5. Setup Interrupt Tombol
+    ; Mengaktifkan Global Interrupt Pin Change
     lds r16, PCICR
     ori r16, (1 << PCIE2) | (1 << PCIE0)
     sts PCICR, r16
 
+    ; Mengaktifkan Interrupt Spesifik Tombol P1
     lds r16, PCMSK2
     ori r16, (1 << PCINT21) | (1 << PCINT22)
     sts PCMSK2, r16
 
+    ; Mengaktifkan Interrupt Spesifik Tombol P2
     lds r16, PCMSK0
     ori r16, (1 << PCINT0) | (1 << PCINT1)
     sts PCMSK0, r16
 
-    ; 6. Setup LCD Cepat
+    ; Setup Pin LCD ke Output
     ldi r16, 0x3F 
     out DDRC, r16
+    
+    ; Mulai Layar LCD dan Interrupt
     rcall lcd_init
+    sei
     
-    sei ; Aktifkan sistem Interrupt
-    
-    ; 7. Panggil fungsi reset untuk memulai ronde pertama
+    ; Memulai Game Pertama Kali
     rcall reset_game 
 
+; Loop Utama Game
 main_loop:
     tst r22
-    breq main_loop ; Tunggu sampai ada yang mencet tombol / flag = 1
+    breq main_loop
 
-    clr r22 ; Hapus flag        
+    clr r22
 
-    ; =========================================================
-    ; RENDER DULU! Biar lampu hijau kliatan nyampe garis finish
-    ; atau nabrak merah sebelum animasinya dimainkan!
-    ; =========================================================
+    ; Tampilkan Pergerakan ke Lampu dan Monitor
     rcall update_system
 
-    ; Cek Tabrakan P1
+    ; Cek Kondisi Tabrakan Player 1
     mov r16, r23
     and r16, r2
     brne p1_kalah       
 
-    ; Cek Tabrakan P2
+    ; Cek Kondisi Tabrakan Player 2
     mov r16, r6
     and r16, r3
     brne p2_kalah
 
-    ; Cek Menang P1 (Nyampe bit paling kiri)
+    ; Cek Kondisi Menang Player 1
     cpi r23, 1
     breq p1_menang
     cpi r23, 0
     breq p1_menang
 
-    ; Cek Menang P2 (Nyampe bit paling kiri)
+    ; Cek Kondisi Menang Player 2
     ldi r16, 1      
     cp r6, r16      
     breq p2_menang
@@ -99,6 +102,7 @@ main_loop:
 
     rjmp main_loop
 
+; Aksi Ketika Ada Pemenang atau Kalah
 p1_kalah:
     inc r5 
     rcall tampilkan_game_over
@@ -123,7 +127,7 @@ p2_menang:
     rcall reset_game
     rjmp main_loop
 
-; ============ ISR PEMAIN 1 (SANGAT RESPONSIF) ============
+; Rutin Interupsi Tombol Player 1
 PCINT2_vect:
     push r16
     in r16, SREG            
@@ -163,7 +167,7 @@ selesai_isr:
     pop r16
     reti                  
 
-; ============ ISR PEMAIN 2 (SANGAT RESPONSIF) ============
+; Rutin Interupsi Tombol Player 2
 PCINT0_vect:
     push r16
     in r16, SREG            
@@ -203,7 +207,7 @@ selesai_isr2:
     pop r16
     reti  
 
-; ================== RUTIN GAME ==================
+; Fungsi Mengirim Data ke Lampu LED
 update_leds_only:
     mov r21, r3  
     rcall shift_8_bit
@@ -218,10 +222,10 @@ update_leds_only:
     cbi PORTD, 4
     ret
 
+; Fungsi Update LED dan Cetak ke Serial
 update_system:
     rcall update_leds_only
 
-    ; Tulis ke Serial Monitor!
     ldi R30, lo8(messager23)
     ldi R31, hi8(messager23)
     rcall send_string
@@ -242,21 +246,21 @@ update_system:
     rcall send_char
     ret
 
+; Animasi Saat Ada yang Nabrak
 tampilkan_game_over:
-    rcall delay_1sec ; Biarkan pemain liat jelas kalau dia nabrak merah!
+    rcall delay_1sec
 
     ldi R30, lo8(msg_gameover)
     ldi R31, hi8(msg_gameover)
     rcall send_string
 
-    ; Animasi Nge-flash Merah Semua!
-    ldi r21, 0xFF ; Merah P2
+    ldi r21, 0xFF
     rcall shift_8_bit
-    ldi r21, 0x00 ; Hijau P2
+    ldi r21, 0x00
     rcall shift_8_bit
-    ldi r21, 0xFF ; Merah P1
+    ldi r21, 0xFF
     rcall shift_8_bit
-    ldi r21, 0x00 ; Hijau P1
+    ldi r21, 0x00
     rcall shift_8_bit
     sbi PORTD, 4
     nop
@@ -266,21 +270,21 @@ tampilkan_game_over:
     rcall delay_1sec
     ret
 
+; Animasi Saat Ada yang Sampai Finish
 tampilkan_menang:
-    rcall delay_1sec ; Tahan frame saat ijo paling ujung kiri nyala biar diliat!
+    rcall delay_1sec
 
     ldi R30, lo8(msg_menang)
     ldi R31, hi8(msg_menang)
     rcall send_string
 
-    ; Animasi Nge-flash Kuning Terang (Merah + Hijau nyala full)
-    ldi r21, 0xFF ; Merah P2
+    ldi r21, 0xFF
     rcall shift_8_bit
-    ldi r21, 0xFF ; Hijau P2
+    ldi r21, 0xFF
     rcall shift_8_bit
-    ldi r21, 0xFF ; Merah P1
+    ldi r21, 0xFF
     rcall shift_8_bit
-    ldi r21, 0xFF ; Hijau P1
+    ldi r21, 0xFF
     rcall shift_8_bit
     sbi PORTD, 4
     nop
@@ -290,28 +294,26 @@ tampilkan_menang:
     rcall delay_1sec
     ret
 
+; Fungsi Mempersiapkan Game ke Kondisi Awal
 reset_game:
-    ; Atur Ulang Semuanya ke Posisi Start
-    ldi r23, 0b10000000 ; Posisi P1 (128 / Ujung Kanan)
+    ldi r23, 0b10000000
     ldi r16, 0b10000000
-    mov r6, r16         ; Posisi P2 (128 / Ujung Kanan)
+    mov r6, r16         
     
-    ldi r16, 0b01010100 ; 3 Jebakan Identik
-    mov r2, r16         ; Jebakan P1
-    mov r3, r16         ; Jebakan P2
+    ldi r16, 0b01010100
+    mov r2, r16         
+    mov r3, r16         
 
-    ; Tulis Welcome Teks + Aturan Main P1 Ijo, P2 Biru ke Monitor
     ldi R30, lo8(message)
     ldi R31, hi8(message)
     rcall send_string
     
-    ; Update LCD
     rcall update_scoreboard
     
-    ; Picu flag r22 supaya main_loop langsung memunculkan posisi awal LED dan Terminal!
     ldi r22, 1 
     ret
 
+; Fungsi Pengiriman Serial ke Shift Register
 shift_8_bit:
     push r18
     ldi r18, 8
@@ -329,7 +331,7 @@ clock_pulse:
     pop r18
     ret
 
-; ================== RUTIN LCD NGEBUT ==================
+; Fungsi Persiapan Layar LCD
 lcd_init:
     rcall delay_15ms 
     ldi r16, 0x33
@@ -347,10 +349,13 @@ lcd_init:
     rcall lcd_cmd
     ret
 
+; Fungsi Kirim Perintah ke LCD
 lcd_cmd:
     push r16
     cbi PORTC, 0 
     rjmp lcd_write
+
+; Fungsi Kirim Teks/Data ke LCD
 lcd_data:
     push r16
     sbi PORTC, 0 
@@ -389,6 +394,7 @@ lcd_write:
     pop r16
     ret
 
+; Fungsi Update Tampilan Skor di Layar LCD
 update_scoreboard:
     ldi r16, 0x01
     rcall lcd_cmd
@@ -436,7 +442,7 @@ update_scoreboard:
     rcall lcd_data
     ret
 
-; ================== RUTIN DELAY PRESISI ==================
+; Kumpulan Fungsi Waktu (Delay)
 delay_debounce:
     push R24
     push R25
@@ -483,7 +489,7 @@ d1s_loop:
     pop r20
     ret
 
-; ================== RUTIN UART ==================
+; Kumpulan Fungsi Cetak ke Serial Monitor (UART)
 send_string:
 agn:
     lpm R18, Z+
@@ -538,7 +544,7 @@ print_digit:
     brne print_digit
     ret
 
-; ================== DATA STRING FINAL ==================
+; Kumpulan Data Teks Konstan
 message:
     .byte 10, 13
     .ascii "WELKAM TO LED DRAG RACE"
