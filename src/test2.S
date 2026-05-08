@@ -2,18 +2,27 @@
 #include "avr/io.h"
 #include "avr/interrupt.h"
 
-; Deklarasi Fungsi Global
+; DEKLARASI FUNGSI GLOBAL
 .global main
 .global PCINT2_vect 
 .global PCINT0_vect
+.global TIMER1_COMPA_vect
 
-; Bagian Utama Program (Setup)
+; INISIALISASI PROGRAM UTAMA DAN REGISTER
 main:
     clr r1
-    clr r4
+    clr r8  
+    clr r9  
+    clr r10 
+    clr r11 
+    clr r12 
+    clr r13 
+    clr r14 
+    clr r15 
+    clr r4  
     clr r5
+    clr r7  
 
-    ; Inisialisasi Serial Monitor (Baudrate 9600)
     clr R24
     sts UBRR0H, R24
     ldi R24, 103
@@ -23,140 +32,405 @@ main:
     ldi R24, (1<<UCSZ01 | 1<<UCSZ00)
     sts UCSR0C, R24
 
-    ; Setup Pin Shift Register (Output)
     sbi DDRD, 2
     sbi DDRD, 3
     sbi DDRD, 4
 
-    ; Setup Pin Tombol Player 1 (Input Pull-up)
     cbi DDRD, 5 
     sbi PORTD, 5 
     cbi DDRD, 6 
     sbi PORTD, 6 
-
-    ; Setup Pin Tombol Player 2 (Input Pull-up)
     cbi DDRB, 0 
     sbi PORTB, 0
     cbi DDRB, 1 
     sbi PORTB, 1
 
-    ; Mengaktifkan Global Interrupt Pin Change
+    ldi r16, hi8(15624)
+    sts OCR1AH, r16
+    ldi r16, lo8(15624)
+    sts OCR1AL, r16
+    ldi r16, (1 << WGM12) | (1 << CS12) | (1 << CS10)
+    sts TCCR1B, r16
+    lds r16, TIMSK1
+    ori r16, (1 << OCIE1A)
+    sts TIMSK1, r16
+
     lds r16, PCICR
     ori r16, (1 << PCIE2) | (1 << PCIE0)
     sts PCICR, r16
-
-    ; Mengaktifkan Interrupt Spesifik Tombol P1
     lds r16, PCMSK2
     ori r16, (1 << PCINT21) | (1 << PCINT22)
     sts PCMSK2, r16
-
-    ; Mengaktifkan Interrupt Spesifik Tombol P2
     lds r16, PCMSK0
     ori r16, (1 << PCINT0) | (1 << PCINT1)
     sts PCMSK0, r16
 
-    ; Setup Pin LCD ke Output
     ldi r16, 0x3F 
     out DDRC, r16
-    
-    ; Mulai Layar LCD dan Interrupt
     rcall lcd_init
     sei
     
-    ; Memulai Game Pertama Kali
     rcall reset_game 
 
-; Loop Utama Game
+; LOOP UTAMA GAME
 main_loop:
     tst r22
-    breq main_loop
+    brne proses_input
+    rjmp check_end
 
+proses_input:
     clr r22
+    
+    tst r7
+    brne game_sedang_jalan
+    
+    ldi r16, 1
+    mov r7, r16     
+    clr r8          
+    clr r9
+    cli
+    clr r16         
+    sts TCNT1H, r16
+    sts TCNT1L, r16
+    sei
 
-    ; Tampilkan Pergerakan ke Lampu dan Monitor
+game_sedang_jalan:
     rcall update_system
 
-    ; Cek Kondisi Tabrakan Player 1
+    tst r12
+    breq proses_p1
+    rjmp check_p2
+
+; LOGIKA PERGERAKAN P1
+proses_p1:
     mov r16, r23
     and r16, r2
-    brne p1_kalah       
+    breq p1_check_win
 
-    ; Cek Kondisi Tabrakan Player 2
+    ldi r16, 2
+    mov r12, r16
+    clr r14
+    clr r15
+    ldi R30, lo8(msg_gameover_p1)
+    ldi R31, hi8(msg_gameover_p1)
+    rcall send_string
+    tst r28
+    brne lompat_ke_p2
+    ldi r16, 2
+    mov r28, r16
+    inc r5
+    ldi R30, lo8(msg_p2_win)
+    ldi R31, hi8(msg_p2_win)
+    rcall send_string
+    ldi r16, 2
+    mov r13, r16
+    clr r10
+    clr r11
+    rjmp check_end
+lompat_ke_p2:
+    rjmp check_p2
+
+p1_check_win:
+    cpi r23, 1
+    breq p1_won
+    cpi r23, 0
+    breq p1_won
+    rjmp check_p2
+
+p1_won:
+    ldi r16, 1
+    mov r12, r16
+    mov r14, r8
+    mov r15, r9
+    cpi r28, 0
+    brne skip_p1_msg
+    ldi R30, lo8(msg_p1_win)
+    ldi R31, hi8(msg_p1_win)
+    rcall send_string
+    ldi r16, 1
+    mov r28, r16
+    inc r4
+skip_p1_msg:
+    rcall update_leds_only
+    rjmp check_p2
+
+; LOGIKA PERGERAKAN P2
+check_p2:
+    tst r13
+    breq proses_p2
+    rjmp check_end
+
+proses_p2:
     mov r16, r6
     and r16, r3
-    brne p2_kalah
+    breq p2_check_win
 
-    ; Cek Kondisi Menang Player 1
-    cpi r23, 1
-    breq p1_menang
-    cpi r23, 0
-    breq p1_menang
+    ldi r16, 2
+    mov r13, r16
+    clr r10
+    clr r11
+    ldi R30, lo8(msg_gameover_p2)
+    ldi R31, hi8(msg_gameover_p2)
+    rcall send_string
+    tst r28
+    brne lompat_ke_end
+    ldi r16, 1
+    mov r28, r16
+    inc r4
+    ldi R30, lo8(msg_p1_win)
+    ldi R31, hi8(msg_p1_win)
+    rcall send_string
+    ldi r16, 2
+    mov r12, r16
+    clr r14
+    clr r15
+    rjmp check_end
+lompat_ke_end:
+    rjmp check_end
 
-    ; Cek Kondisi Menang Player 2
+p2_check_win:
     ldi r16, 1      
     cp r6, r16      
-    breq p2_menang
+    breq p2_won
     ldi r16, 0      
     cp r6, r16      
-    breq p2_menang
+    breq p2_won
+    rjmp check_end
 
-    rjmp main_loop
+p2_won:
+    ldi r16, 1
+    mov r13, r16
+    mov r10, r8
+    mov r11, r9
+    cpi r28, 0
+    brne skip_p2_msg
+    ldi R30, lo8(msg_p2_win)
+    ldi R31, hi8(msg_p2_win)
+    rcall send_string
+    ldi r16, 2
+    mov r28, r16
+    inc r5
+skip_p2_msg:
+    rcall update_leds_only
+    rjmp check_end
 
-; Aksi Ketika Ada Pemenang atau Kalah
-p1_kalah:
-    inc r5 
-    rcall tampilkan_game_over
+; EVALUASI AKHIR GAME
+check_end:
+    tst r12
+    breq end_loop_jump
+    tst r13
+    breq end_loop_jump
+
+    clr r7 
+    rcall cetak_hasil
+    rcall selebrasi_kuning
     rcall reset_game
+
+end_loop_jump:
     rjmp main_loop
 
-p2_kalah:
-    inc r4 
-    rcall tampilkan_game_over
-    rcall reset_game
-    rjmp main_loop
+; ROUTINE CETAK HASIL PERBANDINGAN WAKTU
+cetak_hasil:
+    ldi R30, lo8(msg_p1_time)
+    ldi R31, hi8(msg_p1_time)
+    rcall send_string
+    mov R24, r14
+    mov R25, r15
+    rcall send_uint16
+    
+    ldi R30, lo8(msg_p2_time)
+    ldi R31, hi8(msg_p2_time)
+    rcall send_string
+    mov R24, r10
+    mov R25, r11
+    rcall send_uint16
+    
+    ldi R30, lo8(msg_s_nl)
+    ldi R31, hi8(msg_s_nl)
+    rcall send_string
+    
+    ldi R30, lo8(msg_p1_best)
+    ldi R31, hi8(msg_p1_best)
+    rcall send_string
 
-p1_menang:
-    inc r4 
-    rcall tampilkan_menang
-    rcall reset_game
-    rjmp main_loop
+    mov R24, r14
+    mov R25, r15
+    ldi r17, 0 
+    rcall update_best_time
+    ldi r16, 0xFF
+    cp R24, r16
+    cpc R25, r16
+    brne print_best1
+    clr R24
+    clr R25
+print_best1:
+    rcall send_uint16
 
-p2_menang:
-    inc r5 
-    rcall tampilkan_menang
-    rcall reset_game
-    rjmp main_loop
+    ldi R30, lo8(msg_p2_best)
+    ldi R31, hi8(msg_p2_best)
+    rcall send_string
 
-; Rutin Interupsi Tombol Player 1
+    mov R24, r10
+    mov R25, r11
+    ldi r17, 2 
+    rcall update_best_time
+    ldi r16, 0xFF
+    cp R24, r16
+    cpc R25, r16
+    brne print_best2
+    clr R24
+    clr R25
+print_best2:
+    rcall send_uint16
+
+    ldi R30, lo8(msg_s_nl)
+    ldi R31, hi8(msg_s_nl)
+    rcall send_string
+    ret
+
+; LOGIKA VALIDASI DAN PENYIMPANAN BEST TIME (EEPROM)
+update_best_time:
+    push r17
+    push r18
+    push r20
+    push r21
+
+    rcall eeprom_read
+    mov r20, r16
+    inc r17
+    rcall eeprom_read
+    mov r21, r16
+    dec r17 
+
+    mov r16, r24
+    or r16, r25
+    breq return_eeprom_best
+
+    ldi r16, 0xFF
+    cp r20, r16
+    cpc r21, r16
+    breq save_current
+    
+    mov r16, r20
+    or r16, r21
+    breq save_current
+
+    cp r24, r20
+    cpc r25, r21
+    brsh return_eeprom_best 
+
+save_current:
+    mov r18, r24
+    rcall eeprom_write
+    inc r17
+    mov r18, r25
+    rcall eeprom_write
+    dec r17
+    rjmp end_update_best
+
+return_eeprom_best:
+    mov r24, r20
+    mov r25, r21
+    ldi r16, 0xFF
+    cp r24, r16
+    cpc r25, r16
+    brne end_update_best
+    clr r24
+    clr r25
+
+end_update_best:
+    pop r21
+    pop r20
+    pop r18
+    pop r17
+    ret
+
+; OPERASI BACA DAN TULIS MEMORI EEPROM
+eeprom_write:
+    sbic EECR, EEPE
+    rjmp eeprom_write
+    ldi r19, 0
+    out EEARH, r19
+    out EEARL, r17 
+    out EEDR, r18  
+    cli
+    sbi EECR, EEMPE
+    sbi EECR, EEPE
+    sei
+    ret
+
+eeprom_read:
+    sbic EECR, EEPE
+    rjmp eeprom_read
+    ldi r19, 0
+    out EEARH, r19
+    out EEARL, r17
+    sbi EECR, EERE
+    in r16, EEDR
+    ret
+
+; ANIMASI AKHIR RONDE (KUNING)
+selebrasi_kuning:
+    rcall delay_1sec
+    ldi r21, 0xFF
+    rcall shift_8_bit
+    ldi r21, 0xFF
+    rcall shift_8_bit
+    ldi r21, 0xFF
+    rcall shift_8_bit
+    ldi r21, 0xFF
+    rcall shift_8_bit
+    sbi PORTD, 4
+    nop
+    cbi PORTD, 4
+    rcall delay_1sec
+    rcall delay_1sec
+    ret
+
+; INTERUPSI HARDWARE TIMER 1 DETIK
+TIMER1_COMPA_vect:
+    push r16
+    in r16, SREG
+    push r16
+    tst r7
+    breq timer_done
+    inc r8
+    brne timer_done
+    inc r9
+timer_done:
+    pop r16
+    out SREG, r16
+    pop r16
+    reti
+
+; INTERUPSI TOMBOL PLAYER 1
 PCINT2_vect:
     push r16
     in r16, SREG            
     push r16
     push r24
     push r25
-
     rcall delay_debounce 
-
 cek_tombol_1_isr:
+    tst r12
+    brne selesai_isr
     sbic PIND, 5
     rjmp cek_tombol_2_isr  
     mov r16, r23
-    andi r16, 0b00000001
+    andi r16, 1
     brne selesai_isr        
     lsr r23
     ldi r22, 1
     rjmp selesai_isr
-
 cek_tombol_2_isr:
     sbic PIND, 6
     rjmp selesai_isr       
     mov r16, r23
-    andi r16, 0b00000011
+    andi r16, 3
     brne selesai_isr        
     lsr r23
     lsr r23
     ldi r22, 1
-
 selesai_isr:
     ldi r16, (1 << PCIF2)
     out 0x1B, r16           
@@ -167,36 +441,34 @@ selesai_isr:
     pop r16
     reti                  
 
-; Rutin Interupsi Tombol Player 2
+; INTERUPSI TOMBOL PLAYER 2
 PCINT0_vect:
     push r16
     in r16, SREG            
     push r16
     push r24
     push r25
-
     rcall delay_debounce 
-
 cek_tombol_3_isr:
+    tst r13
+    brne selesai_isr2
     sbic PINB, 0
     rjmp cek_tombol_4_isr  
     mov r16, r6
-    andi r16, 0b00000001
+    andi r16, 1
     brne selesai_isr2        
     lsr r6
     ldi r22, 1
     rjmp selesai_isr2
-
 cek_tombol_4_isr:
     sbic PINB, 1
     rjmp selesai_isr2       
     mov r16, r6
-    andi r16, 0b00000011
+    andi r16, 3
     brne selesai_isr2        
     lsr r6
     lsr r6
     ldi r22, 1
-
 selesai_isr2:
     ldi r16, (1 << PCIF0)
     out 0x1B, r16           
@@ -207,94 +479,78 @@ selesai_isr2:
     pop r16
     reti  
 
-; Fungsi Mengirim Data ke Lampu LED
+; RENDER OUTPUT LED DAN SERIAL MONITOR
 update_leds_only:
     mov r21, r3  
+    mov r16, r13
+    cpi r16, 1
+    brne red_p2_ok
+    mov r16, r28
+    cpi r16, 2
+    brne red_p2_ok
+    clr r21
+red_p2_ok:
     rcall shift_8_bit
+
     mov r21, r6  
+    mov r16, r13
+    cpi r16, 1
+    brne grn_p2_ok
+    mov r16, r28
+    cpi r16, 2
+    brne grn_p2_ok
+    ldi r21, 0xFF
+grn_p2_ok:
     rcall shift_8_bit
+
     mov r21, r2  
+    mov r16, r12
+    cpi r16, 1
+    brne red_p1_ok
+    mov r16, r28
+    cpi r16, 1
+    brne red_p1_ok
+    clr r21
+red_p1_ok:
     rcall shift_8_bit
+
     mov r21, r23 
+    mov r16, r12
+    cpi r16, 1
+    brne grn_p1_ok
+    mov r16, r28
+    cpi r16, 1
+    brne grn_p1_ok
+    ldi r21, 0xFF
+grn_p1_ok:
     rcall shift_8_bit
+
     sbi PORTD, 4 
     nop
     cbi PORTD, 4
     ret
 
-; Fungsi Update LED dan Cetak ke Serial
 update_system:
     rcall update_leds_only
-
     ldi R30, lo8(messager23)
     ldi R31, hi8(messager23)
     rcall send_string
     mov R24, r23
     clr R25
     rcall send_uint16
-    
     ldi R30, lo8(msg_p2_pos)
     ldi R31, hi8(msg_p2_pos)
     rcall send_string
     mov R24, r6
     clr R25
     rcall send_uint16
-    
     ldi r16, 10
     rcall send_char
     ldi r16, 13
     rcall send_char
     ret
 
-; Animasi Saat Ada yang Nabrak
-tampilkan_game_over:
-    rcall delay_1sec
-
-    ldi R30, lo8(msg_gameover)
-    ldi R31, hi8(msg_gameover)
-    rcall send_string
-
-    ldi r21, 0xFF
-    rcall shift_8_bit
-    ldi r21, 0x00
-    rcall shift_8_bit
-    ldi r21, 0xFF
-    rcall shift_8_bit
-    ldi r21, 0x00
-    rcall shift_8_bit
-    sbi PORTD, 4
-    nop
-    cbi PORTD, 4
-
-    rcall delay_1sec
-    rcall delay_1sec
-    ret
-
-; Animasi Saat Ada yang Sampai Finish
-tampilkan_menang:
-    rcall delay_1sec
-
-    ldi R30, lo8(msg_menang)
-    ldi R31, hi8(msg_menang)
-    rcall send_string
-
-    ldi r21, 0xFF
-    rcall shift_8_bit
-    ldi r21, 0xFF
-    rcall shift_8_bit
-    ldi r21, 0xFF
-    rcall shift_8_bit
-    ldi r21, 0xFF
-    rcall shift_8_bit
-    sbi PORTD, 4
-    nop
-    cbi PORTD, 4
-
-    rcall delay_1sec
-    rcall delay_1sec
-    ret
-
-; Fungsi Mempersiapkan Game ke Kondisi Awal
+; FUNGSI RESET GAME
 reset_game:
     ldi r23, 0b10000000
     ldi r16, 0b10000000
@@ -310,10 +566,24 @@ reset_game:
     
     rcall update_scoreboard
     
-    ldi r22, 1 
+    clr r8
+    clr r9
+    clr r10
+    clr r11
+    clr r12
+    clr r13
+    clr r14
+    clr r15
+    
+    clr r7  
+    clr r22 
+    clr r28
+
+    rcall update_system
+    
     ret
 
-; Fungsi Pengiriman Serial ke Shift Register
+; KOMUNIKASI SPI KE SHIFT REGISTER
 shift_8_bit:
     push r18
     ldi r18, 8
@@ -331,7 +601,7 @@ clock_pulse:
     pop r18
     ret
 
-; Fungsi Persiapan Layar LCD
+; OPERASI LAYAR LCD 
 lcd_init:
     rcall delay_15ms 
     ldi r16, 0x33
@@ -349,13 +619,10 @@ lcd_init:
     rcall lcd_cmd
     ret
 
-; Fungsi Kirim Perintah ke LCD
 lcd_cmd:
     push r16
     cbi PORTC, 0 
     rjmp lcd_write
-
-; Fungsi Kirim Teks/Data ke LCD
 lcd_data:
     push r16
     sbi PORTC, 0 
@@ -375,7 +642,6 @@ lcd_write:
     nop
     cbi PORTC, 1 
     rcall delay_2ms 
-
     mov r17, r16
     andi r17, 0x0F
     lsl r17
@@ -388,18 +654,15 @@ lcd_write:
     nop
     cbi PORTC, 1 
     rcall delay_2ms 
-    
     pop r18
     pop r17
     pop r16
     ret
 
-; Fungsi Update Tampilan Skor di Layar LCD
 update_scoreboard:
     ldi r16, 0x01
     rcall lcd_cmd
     rcall delay_15ms
-
     ldi r16, 'S'
     rcall lcd_data
     ldi r16, 'C'
@@ -410,10 +673,8 @@ update_scoreboard:
     rcall lcd_data
     ldi r16, 'E'
     rcall lcd_data
-
     ldi r16, 0xC0
     rcall lcd_cmd
-    
     ldi r16, 'P'
     rcall lcd_data
     ldi r16, '1'
@@ -423,14 +684,12 @@ update_scoreboard:
     mov r16, r4
     subi r16, -48 
     rcall lcd_data
-    
     ldi r16, ' '
     rcall lcd_data
     ldi r16, '|'
     rcall lcd_data
     ldi r16, ' '
     rcall lcd_data
-
     ldi r16, 'P'
     rcall lcd_data
     ldi r16, '2'
@@ -442,7 +701,7 @@ update_scoreboard:
     rcall lcd_data
     ret
 
-; Kumpulan Fungsi Waktu (Delay)
+; KUMPULAN FUNGSI DELAY
 delay_debounce:
     push R24
     push R25
@@ -489,7 +748,7 @@ d1s_loop:
     pop r20
     ret
 
-; Kumpulan Fungsi Cetak ke Serial Monitor (UART)
+; KUMPULAN FUNGSI PENGIRIMAN SERIAL MONITOR (UART)
 send_string:
 agn:
     lpm R18, Z+
@@ -544,12 +803,12 @@ print_digit:
     brne print_digit
     ret
 
-; Kumpulan Data Teks Konstan
+; KUMPULAN DATA STRING TERMINAL
 message:
     .byte 10, 13
     .ascii "WELKAM TO LED DRAG RACE"
     .byte 10, 13
-    .ascii "Tekan PD5 untuk geser 1 langkah dan PD6 untuk geser 2 langkah"
+    .ascii "Tekan tombol kanan untuk geser 1 langkah dan kiri untuk geser 2 langkah"
     .byte 10, 13
     .ascii "Hindari LED merah!"
     .byte 10, 13
@@ -564,12 +823,42 @@ msg_p2_pos:
     .ascii " | P2 Pos: "
     .byte 0
 
-msg_gameover:
+msg_gameover_p1:
     .byte 10, 13
-    .ascii "DUARR KENA JEBAKAN!"
+    .ascii "DUARR P1 KENA JEBAKAN!"
     .byte 10, 13, 0
 
-msg_menang:
+msg_gameover_p2:
     .byte 10, 13
-    .ascii "MANTAP SAMPAI FINISH!"
+    .ascii "DUARR P2 KENA JEBAKAN!"
     .byte 10, 13, 0
+
+msg_p1_win:
+    .byte 10, 13
+    .ascii "P1 WIN!"
+    .byte 10, 13, 0
+
+msg_p2_win:
+    .byte 10, 13
+    .ascii "P2 WIN!"
+    .byte 10, 13, 0
+
+msg_p1_time:
+    .ascii "P1 Time: "
+    .byte 0
+
+msg_p2_time:
+    .ascii " s | P2 Time: "
+    .byte 0
+
+msg_s_nl:
+    .ascii " s"
+    .byte 10, 13, 0
+
+msg_p1_best:
+    .ascii "P1 Best Time: "
+    .byte 0
+
+msg_p2_best:
+    .ascii " s | P2 Best Time: "
+    .byte 0
