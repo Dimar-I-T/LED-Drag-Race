@@ -45,11 +45,11 @@ main:
     cbi DDRB, 1 
     sbi PORTB, 1
 
-    ldi r16, hi8(15624)
+    ldi r16, hi8(2499)
     sts OCR1AH, r16
-    ldi r16, lo8(15624)
+    ldi r16, lo8(2499)
     sts OCR1AL, r16
-    ldi r16, (1 << WGM12) | (1 << CS12) | (1 << CS10)
+    ldi r16, (1 << WGM12) | (1 << CS11) | (1 << CS10)
     sts TCCR1B, r16
     lds r16, TIMSK1
     ori r16, (1 << OCIE1A)
@@ -236,14 +236,14 @@ cetak_hasil:
     rcall send_string
     mov R24, r14
     mov R25, r15
-    rcall send_uint16
+    rcall print_time
     
     ldi R30, lo8(msg_p2_time)
     ldi R31, hi8(msg_p2_time)
     rcall send_string
     mov R24, r10
     mov R25, r11
-    rcall send_uint16
+    rcall print_time
     
     ldi R30, lo8(msg_s_nl)
     ldi R31, hi8(msg_s_nl)
@@ -264,7 +264,7 @@ cetak_hasil:
     clr R24
     clr R25
 print_best1:
-    rcall send_uint16
+    rcall print_time
 
     ldi R30, lo8(msg_p2_best)
     ldi R31, hi8(msg_p2_best)
@@ -281,7 +281,7 @@ print_best1:
     clr R24
     clr R25
 print_best2:
-    rcall send_uint16
+    rcall print_time
 
     ldi R30, lo8(msg_s_nl)
     ldi R31, hi8(msg_s_nl)
@@ -749,6 +749,40 @@ d1s_loop:
     ret
 
 ; KUMPULAN FUNGSI PENGIRIMAN SERIAL MONITOR (UART)
+print_time:
+    push R26
+    push R27
+    clr R26
+    clr R27
+div_100_loop:
+    cpi R24, 100
+    ldi r16, 0
+    cpc R25, r16
+    brlo div_100_done
+    subi R24, 100
+    sbci R25, 0
+    adiw R26, 1
+    rjmp div_100_loop
+div_100_done:
+    push R24
+    push R25
+    mov R24, R26
+    mov R25, R27
+    rcall send_uint16
+    ldi r16, '.'
+    rcall send_char
+    pop R25
+    pop R24
+    cpi R24, 10
+    brsh print_rem
+    ldi r16, '0'
+    rcall send_char
+print_rem:
+    rcall send_uint16
+    pop R27
+    pop R26
+    ret
+
 send_string:
 agn:
     lpm R18, Z+
