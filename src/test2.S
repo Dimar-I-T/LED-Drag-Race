@@ -65,8 +65,6 @@ main:
     ori r16, (1 << PCINT0) | (1 << PCINT1)
     sts PCMSK0, r16
 
-    ldi r16, 0x3F 
-    out DDRC, r16
     rcall lcd_init
     sei
 
@@ -604,18 +602,71 @@ clock_pulse:
     pop r18
     ret
 
-; OPERASI LAYAR LCD 
+.equ I2C_ADDR, 0x4E  
+; 0x27 Address Slave (lcd display) = 010 0111
+; Mode write --> Bit 0 = 0
+; 0100 1110 <-- Taruh diujung kanan (bit 0)
+; Convert ke hex menjadi 0x4E
+
+twi_init:
+    ; Set bit rate SCL ke ~100kHz (Asumsi clock AVR 16 MHz)
+    ldi r16, 72
+    sts TWBR, r16
+    ; Prescaler = 1 (TWPS0=0, TWPS1=0)
+    lds r16, TWSR
+    andi r16, 0xF8
+    sts TWSR, r16
+    ret
+
+twi_start:
+    ldi r16, (1<<TWINT)|(1<<TWSTA)|(1<<TWEN)
+    sts TWCR, r16
+wait_start:
+    lds r16, TWCR
+    sbrs r16, TWINT
+    rjmp wait_start
+    ret
+
+twi_stop:
+    ldi r16, (1<<TWINT)|(1<<TWSTO)|(1<<TWEN)
+    sts TWCR, r16
+    ret
+
+twi_write:
+    sts TWDR, r16
+    ldi r16, (1<<TWINT)|(1<<TWEN)
+    sts TWCR, r16
+wait_write:
+    lds r16, TWCR
+    sbrs r16, TWINT
+    rjmp wait_write
+    ret
+
 lcd_init:
+    rcall twi_init
     rcall delay_15ms 
-    ldi r16, 0x33
-    rcall lcd_cmd
-    ldi r16, 0x32
-    rcall lcd_cmd
-    ldi r16, 0x28
+    
+    ldi r17, 0x38     ; Data: 0x30 + Backlight ON (100)
+    rcall i2c_send_nibble
+    rcall delay_15ms
+    
+    ldi r17, 0x38
+    rcall i2c_send_nibble
+    rcall delay_2ms
+    
+    ldi r17, 0x38
+    rcall i2c_send_nibble
+    rcall delay_2ms
+    
+    ldi r17, 0x28
+    rcall i2c_send_nibble
+    rcall delay_2ms
+    
+    ldi r16, 0x28     ; 4-bit, 2 baris, 5x8 font
     rcall lcd_cmd
     ldi r16, 0x0C
     rcall lcd_cmd
-    ldi r16, 0x01
+    ldi r16, 0x01     ; Clear display
     rcall lcd_cmd
     rcall delay_15ms
     ldi r16, 0x06
@@ -623,42 +674,59 @@ lcd_init:
     ret
 
 lcd_cmd:
-    push r16
-    cbi PORTC, 0 
-    rjmp lcd_write
-lcd_data:
-    push r16
-    sbi PORTC, 0 
-lcd_write:
     push r17
-    push r18
+    push r16
     mov r17, r16
-    swap r17
-    andi r17, 0x0F
-    lsl r17
-    lsl r17 
-    in r18, PORTC
-    andi r18, 0x03 
-    or r18, r17
-    out PORTC, r18
-    sbi PORTC, 1 
-    nop
-    cbi PORTC, 1 
-    rcall delay_2ms 
+    andi r17, 0xF0
+    ori r17, 0x08     ; Backlight=1, EN=0, RW=0, RS=0
+    rcall i2c_send_nibble
+    
+    pop r16
+    push r16
+    swap r16
+    andi r16, 0xF0
     mov r17, r16
-    andi r17, 0x0F
-    lsl r17
-    lsl r17
-    in r18, PORTC
-    andi r18, 0x03
-    or r18, r17
-    out PORTC, r18
-    sbi PORTC, 1 
-    nop
-    cbi PORTC, 1 
-    rcall delay_2ms 
-    pop r18
+    ori r17, 0x08
+    rcall i2c_send_nibble
+    pop r16
     pop r17
+    ret
+
+lcd_data:
+    push r17
+    push r16
+    mov r17, r16
+    andi r17, 0xF0
+    ori r17, 0x09
+    rcall i2c_send_nibble
+    
+    pop r16
+    push r16
+    swap r16
+    andi r16, 0xF0
+    mov r17, r16
+    ori r17, 0x09
+    rcall i2c_send_nibble
+    pop r16
+    pop r17
+    ret
+
+i2c_send_nibble:
+    push r16
+    rcall twi_start
+    ldi r16, I2C_ADDR  
+    rcall twi_write
+    
+    mov r16, r17
+    ori r16, 0x04
+    rcall twi_write
+    
+    mov r16, r17
+    andi r16, 0xFB
+    rcall twi_write
+    
+    rcall twi_stop
+    rcall delay_2ms
     pop r16
     ret
 
