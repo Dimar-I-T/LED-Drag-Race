@@ -69,6 +69,9 @@ main:
     out DDRC, r16
     rcall lcd_init
     sei
+
+    ldi r16, 0x5A    
+    mov r0, r16 
     
     rcall reset_game 
 
@@ -556,9 +559,9 @@ reset_game:
     ldi r16, 0b10000000
     mov r6, r16         
     
-    ldi r16, 0b01010100
-    mov r2, r16         
-    mov r3, r16         
+    rcall get_random_obstacle
+    mov r2, r16
+    mov r3, r16        
 
     ldi R30, lo8(message)
     ldi R31, hi8(message)
@@ -837,6 +840,49 @@ print_digit:
     brne print_digit
     ret
 
+get_random_obstacle:
+    push r17
+    push r30
+    push r31
+
+    ; Entropy dari timer
+    lds r17, TCNT1L
+    eor r0, r17
+    tst r0
+    brne lfsr_ok
+    ldi r17, 0xAC
+    mov r0, r17
+lfsr_ok:
+    lsr r0
+    brcc no_feedback
+    ldi r16, 0xB8
+    eor r0, r16
+no_feedback:
+
+    ; Modulo 20
+    mov r16, r0
+    ldi r17, 20
+mod_loop:
+    cp r16, r17
+    brlo mod_done
+    sub r16, r17
+    rjmp mod_loop
+mod_done:
+
+    ; Byte address = label + index, tapi lpm butuh byte addr
+    ; GAS: lo8/hi8 sudah byte address, jadi langsung pakai
+    ldi r30, lo8(obstacle_table)
+    ldi r31, hi8(obstacle_table)
+    clr r17
+    add r30, r16
+    adc r31, r17
+    lpm r16, Z
+
+    pop r31
+    pop r30
+    pop r17
+    ret
+
 ; KUMPULAN DATA STRING TERMINAL
 message:
     .byte 10, 13
@@ -896,3 +942,10 @@ msg_p1_best:
 msg_p2_best:
     .ascii " s | P2 Best Time: "
     .byte 0
+
+obstacle_table:
+    .byte 2, 4, 8, 10, 16, 18, 20
+    .byte 32, 34, 36, 40, 42, 64
+    .byte 66, 68, 72, 74, 80, 82
+    .byte 84
+obstacle_table_len = 20
