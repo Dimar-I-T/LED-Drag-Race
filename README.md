@@ -54,7 +54,7 @@ Pengujian proyek ini dilakukan dalam dua tahap, yaitu melalui lingkungan virtual
 - Simulasi Virtual: Pada Wokwi, logika pemrograman Assembly beserta seluruh integrasi perangkat keras (LCD, Shift Register, pewaktuan, tombol) tervalidasi dan mampu bekerja secara sinkron tanpa celah.
 - Pengujian Fisik: Pada hasil rekayasa nyata, terjadi kegagalan fungsional pada rangkaian yang telah dibuat. Barisan LED menyala secara acak, tertahan (stuck), dan mikrokontroller tidak memberikan respons terhadap input tombol.
 
-Kegagalan pada rangkaian fisik disebabkan oleh kompleksitas pemasangan kabel yang memicu loose connection dan bertindak layaknya antena yang sensitif terhadap gangguan elektromagnetik, sehingga instruksi data rusak sebelum diproses IC. Selain itu, karena seluruh beban (LCD, empat IC, dan puluhan LED aktif) ditarik terpusat dari satu pin 5V mikrokontroler, terjadi penurunan tegangan suplai sesaat (voltage dip) yang memicu kegagalan sistem digital.
+Kegagalan pada rangkaian fisik disebabkan oleh kompleksitas pemasangan kabel yang memicu loose connection dan bertindak layaknya antena yang sensitif terhadap gangguan elektromagnetik, sehingga instruksi data rusak sebelum diproses IC. Selain itu, karena seluruh beban (LCD, empat IC, dan belasan LED aktif) ditarik terpusat dari satu pin 5V mikrokontroler, terjadi penurunan tegangan suplai sesaat (voltage dip) yang memicu kegagalan sistem digital.
 
 ---
 
