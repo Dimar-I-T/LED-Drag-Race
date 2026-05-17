@@ -23,6 +23,7 @@ Sebagai solusinya, proyek ini merancang simulasi permainan LED Drag Race untuk d
 ### Hardware design and implementation details
 
 ![image](https://hackmd.io/_uploads/BJpvHEwyze.png)
+
 Klik disini untuk menuju ke <a href="https://wokwi.com/projects/462617820212915201">Link Simulasi</a>
 
 Proyek ini menggunakan mikrokontroler Arduino Uno sebagai unit pemrosesan pusat yang mengatur logika permainan serta interaksi input dan output. Komponen perangkat keras yang digunakan meliputi:
